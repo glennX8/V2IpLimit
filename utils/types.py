@@ -64,7 +64,7 @@ class UserType:
 
     Attributes:
         name (str): The name of the user.
-        status (str | None): The status of the user. None if no status is provided.
+        status (UserStatus | None): The status of the user. None if no status is provided.
         ip (list[str] | list): List of IP address of the user.
     """
 
