@@ -25,7 +25,6 @@ from utils.parse_logs import parse_logs
 from utils.types import NodeType, PanelType
 
 TASKS = []
-
 task_node_mapping = {}
 ssl_context = ssl.create_default_context()
 ssl_context.check_hostname = False
@@ -56,19 +55,27 @@ async def get_panel_logs(panel_data: PanelType) -> None:
                     ssl=ssl_context if scheme == "wss" else None,
                 ) as ws:
                     log_message = "Establishing connection for the main panel"
-                    await send_logs(log_message)
+                    try:
+                        await send_logs(log_message)
+                    except Exception as e:
+                        logger.error(f"Failed to send panel log message: {e}", exc_info=True)
                     logger.info(log_message)
                     while True:
                         new_log = await ws.recv()
-                        await parse_logs(str(new_log))
-
+                        try:
+                            await parse_logs(str(new_log))
+                        except Exception as e:
+                            logger.error(f"Failed to parse panel log: {e}", exc_info=True)
             except SSLError:
                 break
             except Exception as error:  # pylint: disable=broad-except
                 log_message = (
                     f"[Main panel] Failed to connect {error} trying 20 second later!"
                 )
-                await send_logs(log_message)
+                try:
+                    await send_logs(log_message)
+                except Exception as e:
+                    logger.error(f"Failed to send panel connection error log: {e}", exc_info=True)
                 logger.error(log_message)
                 await asyncio.sleep(20)
                 continue
@@ -102,11 +109,17 @@ async def get_nodes_logs(panel_data: PanelType, node: NodeType) -> None:
                         "Establishing connection for"
                         + f" node number {node.node_id} name: {node.node_name}"
                     )
-                    await send_logs(log_message)
+                    try:
+                        await send_logs(log_message)
+                    except Exception as e:
+                        logger.error(f"Failed to send node log message: {e}", exc_info=True)
                     logger.info(log_message)
                     while True:
                         new_log = await ws.recv()
-                        await parse_logs(str(new_log))
+                        try:
+                            await parse_logs(str(new_log))
+                        except Exception as e:
+                            logger.error(f"Failed to parse node log: {e}", exc_info=True)
             except SSLError:
                 break
             except Exception as error:  # pylint: disable=broad-except
@@ -116,7 +129,10 @@ async def get_nodes_logs(panel_data: PanelType, node: NodeType) -> None:
                     + f" [node ip: {node.node_ip}] [node message: {node.message}]"
                     + f" [Error Message: {error}] trying to connect 10 second later!"
                 )
-                await send_logs(log_message)
+                try:
+                    await send_logs(log_message)
+                except Exception as e:
+                    logger.error(f"Failed to send node connection error log: {e}", exc_info=True)
                 logger.error(log_message)
                 await asyncio.sleep(10)
                 continue
@@ -132,33 +148,40 @@ async def handle_cancel(panel_data: PanelType, tasks: list[Task]) -> None:
     """
     deactivate_nodes = set()
     while True:
-        nodes_list = await get_nodes(panel_data)
-        for node in nodes_list:
-            if node.status != "connected":
-                deactivate_nodes.add(f"Task-{node.node_id}-{node.node_name}")
+        try:
+            nodes_list = await get_nodes(panel_data)
+            for node in nodes_list:
+                if node.status != "connected":
+                    deactivate_nodes.add(f"Task-{node.node_id}-{node.node_name}")
 
-        for task in tasks:
-            if task.get_name() in deactivate_nodes:
-                log_message = f"Cancelling {task.get_name()}"
-                await send_logs(log_message)
-                logger.info(log_message)
-                deactivate_nodes.remove(task.get_name())
-                task.cancel()
-                tasks.remove(task)
-                if task in task_node_mapping:
-                    task_node_mapping.pop(task)
-        await asyncio.sleep(20)
+            for task in list(tasks):  # Copy to avoid mutation while iterating
+                if task.get_name() in deactivate_nodes:
+                    log_message = f"Cancelling {task.get_name()}"
+                    try:
+                        await send_logs(log_message)
+                    except Exception as e:
+                        logger.error(f"Failed to send handle_cancel log: {e}", exc_info=True)
+                    logger.info(log_message)
+                    deactivate_nodes.remove(task.get_name())
+                    task.cancel()
+                    tasks.remove(task)
+                    if task in task_node_mapping:
+                        task_node_mapping.pop(task)
+            await asyncio.sleep(20)
+        except Exception as e:
+            logger.error(f"Error in handle_cancel: {e}", exc_info=True)
+            await asyncio.sleep(20)
 
 
 async def handle_cancel_one(tasks: list[Task]) -> None:
     """
     *This is used for tests*
-    An asynchronous coroutine that cancels just one tasks in the given list.
+    An asynchronous coroutine that cancels just one task in the given list.
 
     Args:
         tasks (list[Task]): The list of tasks to be cancelled.
     """
-    for task in tasks:
+    for task in list(tasks):
         if task.get_name() == "Task-panel":
             print(f"Cancelling {task.get_name()}...")
             task.cancel()
@@ -177,20 +200,24 @@ async def handle_cancel_all(tasks: list[Task], panel_data: PanelType) -> None:
     async with asyncio.TaskGroup() as tg:
         while True:
             await asyncio.sleep(8192)  # =~ 2 hours and 27 minutes
-            for task in tasks:
-                print(f"Cancelling {task.get_name()}...")
-                task.cancel()
-                tasks.remove(task)
-            print("Start Create Panel Task Test: ")
-            await create_panel_task(panel_data, tg)
-            await asyncio.sleep(5)
-            nodes_list = await get_nodes(panel_data)
-            if nodes_list and not isinstance(nodes_list, ValueError):
-                print("Start Create Nodes Task Test: ")
-                for node in nodes_list:
-                    if node.status == "connected":
-                        await create_node_task(panel_data, tg, node)
-                        await asyncio.sleep(3)
+            try:
+                for task in list(tasks):
+                    print(f"Cancelling {task.get_name()}...")
+                    task.cancel()
+                    tasks.remove(task)
+                print("Start Create Panel Task Test: ")
+                await create_panel_task(panel_data, tg)
+                await asyncio.sleep(5)
+                nodes_list = await get_nodes(panel_data)
+                if nodes_list and not isinstance(nodes_list, ValueError):
+                    print("Start Create Nodes Task Test: ")
+                    for node in nodes_list:
+                        if node.status == "connected":
+                            await create_node_task(panel_data, tg, node)
+                            await asyncio.sleep(3)
+            except Exception as e:
+                logger.error(f"Error in handle_cancel_all: {e}", exc_info=True)
+                await asyncio.sleep(60)
 
 
 async def check_and_add_new_nodes(panel_data: PanelType, tg: asyncio.TaskGroup) -> None:
@@ -202,21 +229,28 @@ async def check_and_add_new_nodes(panel_data: PanelType, tg: asyncio.TaskGroup) 
         tg (asyncio.TaskGroup): The TaskGroup to which the new task will be added.
     """
     while True:
-        all_nodes = await get_nodes(panel_data)
-        if all_nodes and not isinstance(all_nodes, ValueError):
-            for node in all_nodes:
-                if (
-                    node not in task_node_mapping.values()
-                    and node.status == "connected"
-                ):
-                    log_message = (
-                        f"Add a new node. id: {node.node_id}"
-                        + f" name: {node.node_name} ip: {node.node_ip}"
-                    )
-                    await send_logs(log_message)
-                    logger.info(log_message)
-                    await create_node_task(panel_data, tg, node)
-        await asyncio.sleep(25)
+        try:
+            all_nodes = await get_nodes(panel_data)
+            if all_nodes and not isinstance(all_nodes, ValueError):
+                for node in all_nodes:
+                    if (
+                        node not in task_node_mapping.values()
+                        and node.status == "connected"
+                    ):
+                        log_message = (
+                            f"Add a new node. id: {node.node_id}"
+                            + f" name: {node.node_name} ip: {node.node_ip}"
+                        )
+                        try:
+                            await send_logs(log_message)
+                        except Exception as e:
+                            logger.error(f"Failed to send node add log: {e}", exc_info=True)
+                        logger.info(log_message)
+                        await create_node_task(panel_data, tg, node)
+            await asyncio.sleep(25)
+        except Exception as e:
+            logger.error(f"Error in check_and_add_new_nodes: {e}", exc_info=True)
+            await asyncio.sleep(25)
 
 
 async def create_panel_task(panel_data: PanelType, tg: asyncio.TaskGroup) -> None:
@@ -227,9 +261,12 @@ async def create_panel_task(panel_data: PanelType, tg: asyncio.TaskGroup) -> Non
         panel_data (PanelType): The credentials for the panel.
         tg (asyncio.TaskGroup): The TaskGroup to which the new task will be added.
     """
-    TASKS.append(
-        tg.create_task(get_panel_logs(panel_data), name="Task-panel"),
-    )
+    try:
+        TASKS.append(
+            tg.create_task(get_panel_logs(panel_data), name="Task-panel"),
+        )
+    except Exception as e:
+        logger.error(f"Error creating panel task: {e}", exc_info=True)
 
 
 async def create_node_task(
@@ -243,9 +280,12 @@ async def create_node_task(
         tg (asyncio.TaskGroup): The TaskGroup to which the new task will be added.
         node (NodeType): The node for which the new task will be created.
     """
-    INVALID_IPS.add(node.node_ip)
-    task = tg.create_task(
-        get_nodes_logs(panel_data, node), name=f"Task-{node.node_id}-{node.node_name}"
-    )
-    TASKS.append(task)
-    task_node_mapping[task] = node
+    try:
+        INVALID_IPS.add(node.node_ip)
+        task = tg.create_task(
+            get_nodes_logs(panel_data, node), name=f"Task-{node.node_id}-{node.node_name}"
+        )
+        TASKS.append(task)
+        task_node_mapping[task] = node
+    except Exception as e:
+        logger.error(f"Error creating node task: {e}", exc_info=True)
