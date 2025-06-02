@@ -5,11 +5,11 @@ which provides methods for managing disabled users
 
 import json
 import os
+import logging
 
 from utils.logs import logger
 
 DISABLED_USERS = set()
-
 
 class DisabledUsers:
     """
@@ -32,21 +32,27 @@ class DisabledUsers:
             else:
                 return set()
         except Exception as error:  # pylint: disable=broad-except
-            logger.error(error)
+            logger.error(f"Error loading disabled users: {error}", exc_info=True)
             print("Check the error or delete the file :", error)
             print("Delete the .disable_users.json file? (y/n)")
             if input().lower() == "y":
                 print("Deleting ...")
                 logger.info("remove .disable_users.json file")
-                os.remove(".disable_users.json")
+                try:
+                    os.remove(".disable_users.json")
+                except Exception as rm_error:
+                    logger.error(f"Error deleting .disable_users.json: {rm_error}", exc_info=True)
             return set()
 
     async def save_disabled_users(self):
         """
         Saves the disabled users to the JSON file.
         """
-        with open(self.filename, "w", encoding="utf-8") as file:
-            json.dump({"disable_user": list(self.disabled_users)}, file)
+        try:
+            with open(self.filename, "w", encoding="utf-8") as file:
+                json.dump({"disable_user": list(self.disabled_users)}, file)
+        except Exception as error:
+            logger.error(f"Error saving disabled users: {error}", exc_info=True)
 
     async def add_user(self, username: str):
         """
