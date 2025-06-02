@@ -1,11 +1,12 @@
 """
 v2iplimit.py is the
-main file that run other files and functions to run the program.
+main file that runs other files and functions to run the program.
 """
 
 import argparse
 import asyncio
 import time
+import logging
 
 from run_telegram import run_telegram_bot
 from telegram_bot.send_message import send_logs
@@ -30,12 +31,17 @@ from utils.types import PanelType
 
 VERSION = "1.0.6"
 
+# Set up logging for clean output
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s:%(name)s: %(message)s'
+)
+
 parser = argparse.ArgumentParser(description="Help message")
 parser.add_argument("--version", action="version", version=VERSION)
 args = parser.parse_args()
 
 dis_obj = DisabledUsers()
-
 
 async def main():
     """Main function to run the code."""
@@ -61,50 +67,60 @@ async def main():
                 + "\nIn <b>60 seconds</b> later the program will try again."
             )
             await asyncio.sleep(60)
+        except Exception as error:
+            logger.error(f"Unexpected exception in config loading: {error}", exc_info=True)
+            await asyncio.sleep(10)
     panel_data = PanelType(
         config_file["PANEL_USERNAME"],
         config_file["PANEL_PASSWORD"],
         config_file["PANEL_DOMAIN"],
     )
-    dis_users = await dis_obj.read_and_clear_users()
-    await enable_selected_users(panel_data, dis_users)
-    await get_nodes(panel_data)
-    async with asyncio.TaskGroup() as tg:
-        print("Start Create Panel Task Test: ")
-        await create_panel_task(panel_data, tg)
-        await asyncio.sleep(5)
-        nodes_list = await get_nodes(panel_data)
-        if nodes_list and not isinstance(nodes_list, ValueError):
-            print("Start Create Nodes Task Test: ")
-            for node in nodes_list:
-                if node.status == "connected":
-                    await create_node_task(panel_data, tg, node)
-                    await asyncio.sleep(4)
-        print("Start 'check_and_add_new_nodes' Task Test: ")
-        tg.create_task(
-            check_and_add_new_nodes(panel_data, tg),
-            name="add_new_nodes",
-        )
-        print("Start 'handle_cancel' Task Test: ")
-        tg.create_task(
-            handle_cancel(panel_data, TASKS),
-            name="cancel_disable_nodes",
-        )
-        tg.create_task(
-            handle_cancel_all(TASKS, panel_data),
-            name="cancel_all",
-        )
-        tg.create_task(
-            enable_dis_user(panel_data),
-            name="enable_dis_user",
-        )
-        await run_check_users_usage(panel_data)
-
+    try:
+        dis_users = await dis_obj.read_and_clear_users()
+        await enable_selected_users(panel_data, dis_users)
+        await get_nodes(panel_data)
+        async with asyncio.TaskGroup() as tg:
+            print("Start Create Panel Task Test: ")
+            await create_panel_task(panel_data, tg)
+            await asyncio.sleep(5)
+            nodes_list = await get_nodes(panel_data)
+            if nodes_list and not isinstance(nodes_list, ValueError):
+                print("Start Create Nodes Task Test: ")
+                for node in nodes_list:
+                    # Only connect to nodes that exist and are in 'connected' status
+                    if hasattr(node, "status") and node.status == "connected":
+                        try:
+                            await create_node_task(panel_data, tg, node)
+                        except Exception as e:
+                            logger.warning(f"Failed to create node task for {getattr(node, 'name', node)}: {e}")
+                        await asyncio.sleep(4)
+            print("Start 'check_and_add_new_nodes' Task Test: ")
+            tg.create_task(
+                check_and_add_new_nodes(panel_data, tg),
+                name="add_new_nodes",
+            )
+            print("Start 'handle_cancel' Task Test: ")
+            tg.create_task(
+                handle_cancel(panel_data, TASKS),
+                name="cancel_disable_nodes",
+            )
+            tg.create_task(
+                handle_cancel_all(TASKS, panel_data),
+                name="cancel_all",
+            )
+            tg.create_task(
+                enable_dis_user(panel_data),
+                name="enable_dis_user",
+            )
+            await run_check_users_usage(panel_data)
+    except Exception as e:
+        logger.error(f"Unexpected exception in main run: {e}", exc_info=True)
+        await send_logs(f"<code>Unexpected error in main run: {e}</code>")
 
 if __name__ == "__main__":
     while True:
         try:
             asyncio.run(main())
         except Exception as er:  # pylint: disable=broad-except
-            logger.error(er)
+            logger.error(f"Top-level error: {er}", exc_info=True)
             time.sleep(10)
