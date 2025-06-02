@@ -23,16 +23,6 @@ from utils.types import NodeType, PanelType, UserType
 async def get_token(panel_data: PanelType) -> PanelType | ValueError:
     """
     Get access token from the panel API.
-    Args:
-        panel_data (PanelType): A PanelType object containing
-        the username, password, and domain for the panel API.
-
-    Returns:
-        str: The access token from the panel API.
-
-    Raises:
-        ValueError: If the function fails to get a token from both the HTTP
-        and HTTPS endpoints.
     """
     payload = {
         "username": f"{panel_data.panel_username}",
@@ -50,14 +40,20 @@ async def get_token(panel_data: PanelType) -> PanelType | ValueError:
                 return panel_data
             except httpx.HTTPStatusError:
                 message = f"[{response.status_code}] {response.text}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
             except SSLError:
                 continue
             except Exception as error:  # pylint: disable=broad-except
                 message = f"An unexpected error occurred: {error}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
         await asyncio.sleep(random.randint(2, 5) * attempt)
@@ -65,7 +61,10 @@ async def get_token(panel_data: PanelType) -> PanelType | ValueError:
         "Failed to get token after 20 attempts. Make sure the panel is running "
         + "and the username and password are correct."
     )
-    await send_logs(message)
+    try:
+        await send_logs(message)
+    except Exception as e:
+        logger.warning(f"Failed to send log: {e}")
     logger.error(message)
     raise ValueError(message)
 
@@ -73,17 +72,6 @@ async def get_token(panel_data: PanelType) -> PanelType | ValueError:
 async def all_user(panel_data: PanelType) -> list[UserType] | ValueError:
     """
     Get the list of all users from the panel API.
-
-    Args:
-        panel_data (PanelType): A PanelType object containing
-        the username, password, and domain for the panel API.
-
-    Returns:
-        list[user]: The list of usernames of all users.
-
-    Raises:
-        ValueError: If the function fails to get the users from both the HTTP
-        and HTTPS endpoints.
     """
     for attempt in range(20):
         get_panel_token = await get_token(panel_data)
@@ -107,12 +95,18 @@ async def all_user(panel_data: PanelType) -> list[UserType] | ValueError:
                 continue
             except httpx.HTTPStatusError:
                 message = f"[{response.status_code}] {response.text}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
             except Exception as error:  # pylint: disable=broad-except
                 message = f"An unexpected error occurred: {error}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
         await asyncio.sleep(random.randint(2, 5) * attempt)
@@ -120,7 +114,10 @@ async def all_user(panel_data: PanelType) -> list[UserType] | ValueError:
         "Failed to get users after 20 attempts. make sure the panel is running "
         + "and the username and password are correct."
     )
-    await send_logs(message)
+    try:
+        await send_logs(message)
+    except Exception as e:
+        logger.warning(f"Failed to send log: {e}")
     logger.error(message)
     raise ValueError(message)
 
@@ -128,17 +125,6 @@ async def all_user(panel_data: PanelType) -> list[UserType] | ValueError:
 async def enable_all_user(panel_data: PanelType) -> None | ValueError:
     """
     Enable all users on the panel.
-
-    Args:
-        panel_data (PanelType): A PanelType object containing
-        the username, password, and domain for the panel API.
-
-    Returns:
-        None
-
-    Raises:
-        ValueError: If the function fails to enable the users on both the HTTP
-        and HTTPS endpoints.
     """
     get_panel_token = await get_token(panel_data)
     if isinstance(get_panel_token, ValueError):
@@ -151,7 +137,7 @@ async def enable_all_user(panel_data: PanelType) -> None | ValueError:
     if isinstance(users, ValueError):
         raise users
     for username in users:
-        for scheme in ["https", "http"]:  # add this later: save what scheme is used
+        for scheme in ["https", "http"]:
             url = f"{scheme}://{panel_data.panel_domain}/api/user/{username.name}"
             status = {"status": "active"}
             try:
@@ -161,19 +147,28 @@ async def enable_all_user(panel_data: PanelType) -> None | ValueError:
                     )
                     response.raise_for_status()
                 message = f"Enabled user: {username.name}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.info(message)
                 break
             except SSLError:
                 continue
             except httpx.HTTPStatusError:
                 message = f"[{response.status_code}] {response.text}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
             except Exception as error:  # pylint: disable=broad-except
                 message = f"An unexpected error occurred: {error}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
     logger.info("Enabled all users")
 
@@ -183,14 +178,6 @@ async def enable_selected_users(
 ) -> None:
     """
     Enable selected users on the panel.
-
-    Args:
-        panel_data (PanelType): A PanelType object containing
-        the username, password, and domain for the panel API.
-        inactive_users (set[str]): A list of user str that are currently inactive.
-
-    Returns:
-        None
     """
     for username in inactive_users:
         success = False
@@ -213,7 +200,10 @@ async def enable_selected_users(
                         )
                         response.raise_for_status()
                     message = f"Enabled user: {username}"
-                    await send_logs(message)
+                    try:
+                        await send_logs(message)
+                    except Exception as e:
+                        logger.warning(f"Failed to send log: {e}")
                     logger.info(message)
                     success = True
                     break
@@ -221,17 +211,22 @@ async def enable_selected_users(
                     continue
                 except httpx.HTTPStatusError:
                     message = f"[{response.status_code}] {response.text}"
-                    await send_logs(message)
+                    try:
+                        await send_logs(message)
+                    except Exception as e:
+                        logger.warning(f"Failed to send log: {e}")
                     logger.error(message)
-                    # If user not found, don't retry further
                     if response.status_code == 404 and "User not found" in response.text:
                         logger.info(f"User {username} not found, skipping further retries.")
-                        success = True  # Treat as handled
+                        success = True
                         break
                     continue
                 except Exception as error:  # pylint: disable=broad-except
                     message = f"An unexpected error occurred: {error}"
-                    await send_logs(message)
+                    try:
+                        await send_logs(message)
+                    except Exception as e:
+                        logger.warning(f"Failed to send log: {e}")
                     logger.error(message)
                     continue
             if success:
@@ -242,7 +237,10 @@ async def enable_selected_users(
                 f"Failed to enable user: {username} after 5 attempts. "
                 "User may not exist or panel may be down. Skipping."
             )
-            await send_logs(message)
+            try:
+                await send_logs(message)
+            except Exception as e:
+                logger.warning(f"Failed to send log: {e}")
             logger.error(message)
     logger.info("Tried to enable all selected users")
 
@@ -250,18 +248,6 @@ async def enable_selected_users(
 async def disable_user(panel_data: PanelType, username: UserType) -> None | ValueError:
     """
     Disable a user on the panel.
-
-    Args:
-        panel_data (PanelType): A PanelType object containing
-        the username, password, and domain for the panel API.
-        username (user): The username of the user to disable.
-
-    Returns:
-        None
-
-    Raises:
-        ValueError: If the function fails to disable the user on both the HTTP
-        and HTTPS endpoints.
     """
     for attempt in range(20):
         get_panel_token = await get_token(panel_data)
@@ -281,7 +267,10 @@ async def disable_user(panel_data: PanelType, username: UserType) -> None | Valu
                     )
                     response.raise_for_status()
                 message = f"Disabled user: {username.name}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.info(message)
                 dis_obj = DisabledUsers()
                 await dis_obj.add_user(username.name)
@@ -290,16 +279,21 @@ async def disable_user(panel_data: PanelType, username: UserType) -> None | Valu
                 continue
             except httpx.HTTPStatusError:
                 message = f"[{response.status_code}] {response.text}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
-                # If user not found, don't retry further
                 if response.status_code == 404 and "User not found" in response.text:
                     logger.info(f"User {username.name} not found, skipping further retries.")
                     return None
                 continue
             except Exception as error:  # pylint: disable=broad-except
                 message = f"An unexpected error occurred: {error}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
         await asyncio.sleep(random.randint(2, 5) * attempt)
@@ -307,7 +301,10 @@ async def disable_user(panel_data: PanelType, username: UserType) -> None | Valu
         f"Failed to disable user: {username.name} after 20 attempts. Make sure the panel is running "
         + "and the username and password are correct."
     )
-    await send_logs(message)
+    try:
+        await send_logs(message)
+    except Exception as e:
+        logger.warning(f"Failed to send log: {e}")
     logger.error(message)
     raise ValueError(message)
 
@@ -315,17 +312,6 @@ async def disable_user(panel_data: PanelType, username: UserType) -> None | Valu
 async def get_nodes(panel_data: PanelType) -> list[NodeType] | ValueError:
     """
     Get the IDs of all nodes from the panel API.
-
-    Args:
-        panel_data (PanelType): A PanelType object containing
-        the username, password, and domain for the panel API.
-
-    Returns:
-        list[NodeType]: The list of IDs and other information of all nodes.
-
-    Raises:
-        ValueError: If the function fails to get the nodes from both the HTTP
-        and HTTPS endpoints.
     """
     for attempt in range(20):
         get_panel_token = await get_token(panel_data)
@@ -358,12 +344,18 @@ async def get_nodes(panel_data: PanelType) -> list[NodeType] | ValueError:
                 continue
             except httpx.HTTPStatusError:
                 message = f"[{response.status_code}] {response.text}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
             except Exception as error:  # pylint: disable=broad-except
                 message = f"An unexpected error occurred: {error}"
-                await send_logs(message)
+                try:
+                    await send_logs(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send log: {e}")
                 logger.error(message)
                 continue
         await asyncio.sleep(random.randint(2, 5) * attempt)
@@ -371,7 +363,10 @@ async def get_nodes(panel_data: PanelType) -> list[NodeType] | ValueError:
         "Failed to get nodes after 20 attempts. make sure the panel is running "
         + "and the username and password are correct."
     )
-    await send_logs(message)
+    try:
+        await send_logs(message)
+    except Exception as e:
+        logger.warning(f"Failed to send log: {e}")
     logger.error(message)
     raise ValueError(message)
 
