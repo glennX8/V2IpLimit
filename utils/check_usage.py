@@ -43,12 +43,15 @@ async def check_ip_used() -> dict:
     ]
     logger.info("Number of all active ips: %s", str(total_ips))
     messages.append(f"---------\nCount Of All Active IPs: <b>{total_ips}</b>")
-    # Removed the GitHub repo link for clean output
+    # Clean output: GitHub repo link removed
     shorter_messages = [
         "\n".join(messages[i : i + 100]) for i in range(0, len(messages), 100)
     ]
     for message in shorter_messages:
-        await send_logs(message)
+        try:
+            await send_logs(message)
+        except Exception as e:
+            logger.error(f"Failed to send logs: {e}", exc_info=True)
     return all_users_log
 
 
@@ -70,7 +73,10 @@ async def check_users_usage(panel_data: PanelType):
                     + f" active ips. {str(set(user_ip))}"
                 )
                 logger.warning(message)
-                await send_logs(str("<b>Warning: </b>" + message))
+                try:
+                    await send_logs(str("<b>Warning: </b>" + message))
+                except Exception as e:
+                    logger.error(f"Failed to send warning log: {e}", exc_info=True)
                 try:
                     await disable_user(panel_data, UserType(name=user_name, ip=[]))
                 except ValueError as error:
@@ -80,6 +86,8 @@ async def check_users_usage(panel_data: PanelType):
                         pass
                     else:
                         logger.error(f"Error disabling user {user_name}: {error_msg}")
+                except Exception as error:
+                    logger.error(f"Unexpected error disabling user {user_name}: {error}", exc_info=True)
     ACTIVE_USERS.clear()
     all_users_log.clear()
 
@@ -87,6 +95,13 @@ async def check_users_usage(panel_data: PanelType):
 async def run_check_users_usage(panel_data: PanelType) -> None:
     """run check_ip_used() function and then run check_users_usage()"""
     while True:
-        await check_users_usage(panel_data)
-        data = await read_config()
-        await asyncio.sleep(int(data["CHECK_INTERVAL"]))
+        try:
+            await check_users_usage(panel_data)
+        except Exception as e:
+            logger.error(f"Error in check_users_usage: {e}", exc_info=True)
+        try:
+            data = await read_config()
+            await asyncio.sleep(int(data["CHECK_INTERVAL"]))
+        except Exception as e:
+            logger.error(f"Error in sleep interval logic: {e}", exc_info=True)
+            await asyncio.sleep(60)
