@@ -180,7 +180,7 @@ async def enable_all_user(panel_data: PanelType) -> None | ValueError:
 
 async def enable_selected_users(
     panel_data: PanelType, inactive_users: set[str]
-) -> None | ValueError:
+) -> None:
     """
     Enable selected users on the panel.
 
@@ -191,17 +191,14 @@ async def enable_selected_users(
 
     Returns:
         None
-
-    Raises:
-        ValueError: If the function fails to enable the users on both the HTTP
-        and HTTPS endpoints.
     """
     for username in inactive_users:
         success = False
         for attempt in range(5):
             get_panel_token = await get_token(panel_data)
             if isinstance(get_panel_token, ValueError):
-                raise get_panel_token
+                logger.error(f"Could not get panel token for enabling {username}")
+                break
             token = get_panel_token.panel_token
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -226,6 +223,11 @@ async def enable_selected_users(
                     message = f"[{response.status_code}] {response.text}"
                     await send_logs(message)
                     logger.error(message)
+                    # If user not found, don't retry further
+                    if response.status_code == 404 and "User not found" in response.text:
+                        logger.info(f"User {username} not found, skipping further retries.")
+                        success = True  # Treat as handled
+                        break
                     continue
                 except Exception as error:  # pylint: disable=broad-except
                     message = f"An unexpected error occurred: {error}"
@@ -234,16 +236,15 @@ async def enable_selected_users(
                     continue
             if success:
                 break
-            await asyncio.sleep(random.randint(2, 5) * attempt)
+            await asyncio.sleep(random.randint(2, 5) * (attempt + 1))
         if not success:
             message = (
-                f"Failed enable user: {username} after 20 attempts. Make sure the panel is running "
-                + "and the username and password are correct."
+                f"Failed to enable user: {username} after 5 attempts. "
+                "User may not exist or panel may be down. Skipping."
             )
             await send_logs(message)
             logger.error(message)
-            raise ValueError(message)
-    logger.info("Enabled selected users")
+    logger.info("Tried to enable all selected users")
 
 
 async def disable_user(panel_data: PanelType, username: UserType) -> None | ValueError:
@@ -291,6 +292,10 @@ async def disable_user(panel_data: PanelType, username: UserType) -> None | Valu
                 message = f"[{response.status_code}] {response.text}"
                 await send_logs(message)
                 logger.error(message)
+                # If user not found, don't retry further
+                if response.status_code == 404 and "User not found" in response.text:
+                    logger.info(f"User {username.name} not found, skipping further retries.")
+                    return None
                 continue
             except Exception as error:  # pylint: disable=broad-except
                 message = f"An unexpected error occurred: {error}"
@@ -299,7 +304,7 @@ async def disable_user(panel_data: PanelType, username: UserType) -> None | Valu
                 continue
         await asyncio.sleep(random.randint(2, 5) * attempt)
     message = (
-        f"Failed disable user: {username.name} after 20 attempts. Make sure the panel is running "
+        f"Failed to disable user: {username.name} after 20 attempts. Make sure the panel is running "
         + "and the username and password are correct."
     )
     await send_logs(message)
