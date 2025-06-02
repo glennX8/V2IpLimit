@@ -43,7 +43,7 @@ async def check_ip_used() -> dict:
     ]
     logger.info("Number of all active ips: %s", str(total_ips))
     messages.append(f"---------\nCount Of All Active IPs: <b>{total_ips}</b>")
-    messages.append("<code>github.com/houshmand-2005/V2IpLimit/</code>")
+    # Removed the GitHub repo link for clean output
     shorter_messages = [
         "\n".join(messages[i : i + 100]) for i in range(0, len(messages), 100)
     ]
@@ -74,7 +74,12 @@ async def check_users_usage(panel_data: PanelType):
                 try:
                     await disable_user(panel_data, UserType(name=user_name, ip=[]))
                 except ValueError as error:
-                    print(error)
+                    error_msg = str(error)
+                    # Silently ignore "User not found" errors to avoid spam
+                    if "[404]" in error_msg and "User not found" in error_msg:
+                        pass
+                    else:
+                        logger.error(f"Error disabling user {user_name}: {error_msg}")
     ACTIVE_USERS.clear()
     all_users_log.clear()
 
